@@ -6,6 +6,9 @@ public class RoundUIController : MonoBehaviour {
     public GameObject startObject;
     Coroutine currentRoutine;
 
+    public AudioSource roundUiSoundSpeaker;
+    public AudioClip roundStart;
+
     public float roundDisplayTime = 1.4f;
     public float startDisplayTime = 1f;
     bool isPlaying = false;
@@ -15,7 +18,7 @@ public class RoundUIController : MonoBehaviour {
             if (currentRoutine != null)
                 StopCoroutine(currentRoutine);
         }
-
+        roundUiSoundSpeaker.PlayOneShot(roundStart);
         currentRoutine = StartCoroutine(PlaySequence(roundNumber));
         yield return currentRoutine;
     }

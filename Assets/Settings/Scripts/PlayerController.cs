@@ -8,8 +8,8 @@ using UnityEngine.SceneManagement;
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : NetworkBehaviour
 {
-    protected Rigidbody2D rb;
-    protected Animator animator;
+    public Rigidbody2D rb;
+    public Animator animator;
     protected Collider2D bodyCollider;
     public UserInterface healthBar;
     public UserInterface staminaBar;
@@ -30,7 +30,7 @@ public class PlayerController : NetworkBehaviour
     public float currHealth;
     public float maxStamina = 100f;
     public float currStamina = 0;
-    public float idleStaminaRegen = 20f;
+    public float idleStaminaRegen = 10f;
     public float tiredRecoveryThreshold = 50f;
 
     // Damage Mapping, WIP
@@ -65,6 +65,18 @@ public class PlayerController : NetworkBehaviour
     public bool facingRight = true;
     public bool secondKick = false;
 
+    public AudioSource wooshAudioSource;
+    public AudioSource hitAudioSource;
+    public AudioClip[] wooshSounds;
+    private int wooshSoundIndex = 0;
+    public AudioClip[] hitSounds;
+    private int hitSoundIndex = 0;
+    public AudioClip[] blockSounds;
+    private int blockSoundIndex = 0;
+    public AudioClip groundHitSound;
+    public AudioClip tiredSound;
+    public AudioClip slidingStrike;
+
     public enum AttackType {
         Jab,
         Heavy,
@@ -84,7 +96,7 @@ public class PlayerController : NetworkBehaviour
     public virtual void ApplyCharacterStats() {
         switch (characterType) {
             case CharacterType.Mahsk:
-                speed = 5.5f;
+                speed = 5.2f;
 
                 damageJab = 4.5f;
                 damageHeavy = 7.5f;
@@ -93,12 +105,12 @@ public class PlayerController : NetworkBehaviour
                 damageLaunch = 1.5f;
                 damageChain = 7f;
 
-                staminaJab = 7f;
-                staminaKick = 13f;
-                staminaHeavy = 16f;
-                staminaLaunch = 10f;
-                staminaSpecial = 50f;
-                staminaChain = 15f;
+                staminaJab = 10f;
+                staminaKick = 20f;
+                staminaHeavy = 22f;
+                staminaLaunch = 15f;
+                staminaSpecial = 55f;
+                staminaChain = 12f;
                 break;
 
             case CharacterType.Payet:
@@ -107,13 +119,13 @@ public class PlayerController : NetworkBehaviour
                 damageJab = 3.5f;
                 damageHeavy = 5.5f;
                 damageKick = 4.5f;
-                damageSpecial = 15f;
+                damageSpecial = 14f;
                 damageLaunch = 2.5f;
-                damageChain = 8f;
+                damageChain = 10f;
 
-                staminaJab = 5f;
-                staminaKick = 12f;
-                staminaHeavy = 15f;
+                staminaJab = 10f;
+                staminaKick = 20f;
+                staminaHeavy = 20f;
                 staminaLaunch = 10f;
                 staminaSpecial = 60f;
                 staminaChain = 10f;
@@ -134,9 +146,54 @@ public class PlayerController : NetworkBehaviour
         animator = GetComponent<Animator>();
         halfWidth = GetComponent<Collider2D>().bounds.extents.x;
         bodyCollider = GetComponent<Collider2D>();
+        StartCoroutine(WarmUpAssets());
+        staminaBar.SetStamina(maxStamina, maxStamina);
+    }
+
+    IEnumerator WarmUpAssets()
+    {
+        yield return null;
+        Vector3 offScreen = new Vector3(-9999f, -9999f, -9999f);
+
+        foreach (var sr in GetComponentsInChildren<SpriteRenderer>(true))
+            sr.enabled = false;
+
+        animator.SetTrigger("Special");
+        shadowAnimator.SetTrigger("Special");
+
+        if (hitEffects != null)
+        {
+            GameObject fx = Instantiate(hitEffects, offScreen, Quaternion.identity);
+            Animator anim = fx.GetComponent<Animator>();
+            if (anim != null)
+            {
+                for (int i = 1; i <= 7; i++)
+                {
+                    anim.SetInteger("HitType", i);
+                    yield return null;
+                }
+            }
+            Destroy(fx);
+        }
+
+        if (dustEffectPrefab != null)
+        {
+            GameObject dust = Instantiate(dustEffectPrefab, offScreen, Quaternion.identity);
+            yield return null;
+            Destroy(dust);
+        }
+
+        foreach (var sr in GetComponentsInChildren<SpriteRenderer>(true))
+            sr.enabled = true;
     }
 
     protected virtual void FixedUpdate() {
+        if (blockHeld)
+        {
+            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+            return;
+        }
+
         if (!canMove) {
             rb.linearVelocity = Vector2.zero;
             return;
@@ -175,6 +232,10 @@ public class PlayerController : NetworkBehaviour
         if (controlsLocked)
             return;
 
+        if (blockHeld) {
+            canMove = false;
+        }
+
         if (Mathf.Abs(rb.linearVelocityX) > 0.01f) {
             float minX = cam.transform.position.x - camHalfWidth + halfWidth;
             float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
@@ -192,12 +253,9 @@ public class PlayerController : NetworkBehaviour
         bool isIdle = canMove && Mathf.Abs(rb.linearVelocityX) < 0.01f && inputSequence.Count == 0 && !blockHeld && !movementLockedInAir;
         bool isWalking = canMove && Mathf.Abs(rb.linearVelocityX) > 0.01f && !blockHeld && !movementLockedInAir;
 
-        float regenRate = 0f;
+        float regenRate = idleStaminaRegen;
 
         if (!isTired && !blockHeld) {
-            if (isIdle || isWalking)
-                regenRate = idleStaminaRegen;
-
             currStamina += regenRate * Time.deltaTime;
             currStamina = Mathf.Clamp(currStamina, 0f, maxStamina);
             staminaBar.SetStamina(currStamina, maxStamina);
@@ -205,7 +263,7 @@ public class PlayerController : NetworkBehaviour
 
 
         if (isTired) {
-            currStamina += 8f * Time.deltaTime;
+            currStamina += regenRate * Time.deltaTime;
             if (currStamina >= tiredRecoveryThreshold) {
                 currStamina = tiredRecoveryThreshold;
                 ExitTired();
@@ -215,6 +273,41 @@ public class PlayerController : NetworkBehaviour
 
 
     }
+
+    void PlayWooshSound() {
+        if (wooshSounds.Length == 0 || wooshAudioSource == null) return;
+        wooshAudioSource.PlayOneShot(wooshSounds[wooshSoundIndex]);
+        wooshSoundIndex = (wooshSoundIndex + 1) % wooshSounds.Length;
+    }
+
+    void PlayHitSound() {
+        if (hitSounds.Length == 0 || hitAudioSource == null) return;
+        hitAudioSource.PlayOneShot(hitSounds[hitSoundIndex]);
+        hitSoundIndex = (hitSoundIndex + 1) % hitSounds.Length;
+    }
+
+    void PlayBlockSound()
+    {
+        if (blockSounds.Length == 0 || wooshAudioSource == null) return;
+        wooshAudioSource.PlayOneShot(blockSounds[blockSoundIndex]);
+        blockSoundIndex = (blockSoundIndex + 1) % blockSounds.Length;
+    }
+
+    void PlayGroundSound()
+    {
+        hitAudioSource.PlayOneShot(groundHitSound);
+    }
+
+    void PlayTiredSoundSound()
+    {
+        wooshAudioSource.PlayOneShot(tiredSound);
+    }
+
+    void PlaySlidingStrikeSound()
+    {
+        wooshAudioSource.PlayOneShot(slidingStrike);
+    }
+
     void PlayAnim(string trigger)
     {
         animator.SetTrigger(trigger);
@@ -230,10 +323,7 @@ public class PlayerController : NetworkBehaviour
 
     public void OnJab(InputAction.CallbackContext context) {
         if (!context.started) return;
-        if (upHeld)
-            StartTaunt();
-        else
-            QueueInput(AttackType.Jab);
+        QueueInput(AttackType.Jab);
     }
 
     public void OnHeavyPunch(InputAction.CallbackContext context) {
@@ -273,6 +363,12 @@ public class PlayerController : NetworkBehaviour
 
         if (context.started && currStamina > 0f)
         {
+            if (upHeld) {
+                canMove = false;
+                StartTaunt();
+                return; 
+            }
+
             blockHeld = true;
             canMove = false;
 
@@ -317,18 +413,21 @@ public class PlayerController : NetworkBehaviour
         inputSequence.Clear();
 
         if (upHeld == true && lastAttack == AttackType.Heavy) {
+            if (characterType == CharacterType.Mahsk) {
+                PlaySlidingStrikeSound();
+            }
+            else {
+                PlayWooshSound();
+            }
             StartLaunch();
             return;
         }
         else if (upHeld == true && lastAttack == AttackType.Kick) {
+            PlayWooshSound();
             StartSpecial();
             return;
         }
 
-        else if (upHeld == true && lastAttack == AttackType.Jab) {
-            StartTaunt();
-            return;
-        }
 
         switch (lastAttack) {
             case AttackType.Block:
@@ -337,21 +436,25 @@ public class PlayerController : NetworkBehaviour
                 PlayAnim("Block");
                 break;
             case AttackType.Chain:
+                PlayWooshSound();
                 CurrentAttack = AttackType.Chain;
                 canMove = false;
                 PlayAnim("Chain");
                 break;
             case AttackType.Jab:
+                PlayWooshSound();
                 CurrentAttack = AttackType.Jab;
                 canMove = false;
                 PlayAnim("Jab");
                 break;
             case AttackType.Heavy:
+                PlayWooshSound();
                 CurrentAttack = AttackType.Heavy;
                 canMove = false;
                 PlayAnim("HeavyPunch");
                 break;
             case AttackType.Kick:
+                PlayWooshSound();
                 CurrentAttack = AttackType.Kick;
                 canMove = false;
                 PlayAnim("Kick");
@@ -371,6 +474,7 @@ public class PlayerController : NetworkBehaviour
         PlayAnim("Special");
     }
     private void StartTaunt() {
+        speed = 0;
         canMove = false;
         PlayAnim("Taunt");
     }
@@ -378,6 +482,11 @@ public class PlayerController : NetworkBehaviour
     public void EndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
+
+        if (characterType == CharacterType.Mahsk)
+            speed = 5.2f;
+        else
+            speed = 7f;
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
@@ -417,7 +526,7 @@ public class PlayerController : NetworkBehaviour
     }
 
     public void LaunchSpeedBoost() {
-        speed = 13f;
+        speed = 13.5f;
         canMove = true;
 
         if (inputSequence.Count > 0)
@@ -428,7 +537,7 @@ public class PlayerController : NetworkBehaviour
         rb.linearVelocity = Vector2.zero;
         canMove = true;
         if (characterType == CharacterType.Mahsk)
-            speed = 5.5f;
+            speed = 5.2f;
         else
             speed = 7f;
         rb.AddForce(Vector2.down * 10f, ForceMode2D.Impulse);
@@ -441,7 +550,7 @@ public class PlayerController : NetworkBehaviour
         rb.linearVelocity = Vector2.zero;
         canMove = true;
         if (characterType == CharacterType.Mahsk)
-            speed = 5.5f;
+            speed = 5.2f;
         else
             speed = 7f;
         rb.AddForce(Vector2.down * 4f, ForceMode2D.Impulse);
@@ -450,7 +559,7 @@ public class PlayerController : NetworkBehaviour
             TryStartNextAttack();
     }
 
-    public virtual void ReceiveDamage(AttackType attackType, PlayerController attacker, Vector3 hitPos) {
+    public virtual void ReceiveDamage(AttackType attackType, PlayerController attacker, Vector3 hitPos, float damage) {
         if (roundManager.roundOver)
             return;
 
@@ -465,21 +574,14 @@ public class PlayerController : NetworkBehaviour
             shadowAnimator.SetBool("Block", false);
         }
 
-        float damage = attackType switch {
-            AttackType.Jab => damageJab,
-            AttackType.Heavy => damageHeavy,
-            AttackType.Kick => damageKick,
-            AttackType.Special => damageSpecial,
-            AttackType.Launch => damageLaunch,
-            _ => 0f
-        };
+        //float damage = attackType switch { AttackType.Jab => damageJab, AttackType.Heavy => damageHeavy, AttackType.Kick => damageKick, AttackType.Special => damageSpecial, AttackType.Launch => damageLaunch, _ => 0f};
 
         if (attackType == AttackType.Chain) {
             damage = damageChain;
         }
 
         if (isInvincible) {
-            damage *= 0.2f;
+            damage *= 0.4f;
             float newHealth = currHealth - damage;
             currHealth = Mathf.Max(newHealth, Mathf.Min(currHealth, 20f));
         } else
@@ -549,7 +651,7 @@ public class PlayerController : NetworkBehaviour
                 break;
         }
         if (characterType == CharacterType.Mahsk)
-            speed = 5.5f;
+            speed = 5.2f;
         else
             speed = 7f;
     }
@@ -578,16 +680,16 @@ public class PlayerController : NetworkBehaviour
         pos.y + offset.y,
         -1f
     );
-
         GameObject fx = Instantiate(hitEffects, spawnPos, Quaternion.identity);
         Animator anim = fx.GetComponent<Animator>();
         int hitType = GetHitTypeFromAttack(attack);
 
         if (wasBlocked) {
-            Debug.Log("BLOCKED BLOCKED");
+            PlayBlockSound();
             hitType = 6;
         }
         else {
+            PlayHitSound();
             hitType = GetHitTypeFromAttack(attack);
         }
         anim.SetInteger("HitType", hitType);
@@ -597,6 +699,29 @@ public class PlayerController : NetworkBehaviour
     {
         if (dustEffectPrefab == null) return;
 
+        Vector3 basePos = groundPoint.position;
+        float xOffset = dustOffset.x;
+        if (!facingRight)
+            xOffset *= -1f;
+
+        Vector3 spawnPos = new Vector3(
+            basePos.x + xOffset,
+            basePos.y + dustOffset.y,
+            -1f
+        );
+
+        GameObject fx = Instantiate(dustEffectPrefab, spawnPos, Quaternion.identity);
+        Vector3 scale = fx.transform.localScale;
+        scale.x = Mathf.Abs(scale.x) * (facingRight ? 1 : -1);
+        fx.transform.localScale = scale;
+
+    }
+
+    public void GroundSpawnDustFX()
+    {
+        if (dustEffectPrefab == null) return;
+
+        PlayGroundSound();
         Vector3 basePos = groundPoint.position;
         float xOffset = dustOffset.x;
         if (!facingRight)
@@ -637,6 +762,7 @@ public class PlayerController : NetworkBehaviour
 
     protected virtual void KnockedOut() {
         canMove = false;
+        rb.linearVelocity = new Vector2(0f, -10f);
         animator.Play("Falling Down");
         if (shadowAnimator != null)
             shadowAnimator.gameObject.SetActive(false);
@@ -649,9 +775,10 @@ public class PlayerController : NetworkBehaviour
     }
 
     public virtual void FreezeBlockAnimation() {
-        if (blockHeld)
+        if (blockHeld) {
             animator.speed = 0f;
-        shadowAnimator.speed = 0f;
+            shadowAnimator.speed = 0f;
+        }
     }
 
     protected virtual void ReleaseBlock() {
@@ -713,11 +840,11 @@ public class PlayerController : NetworkBehaviour
 
     protected virtual void EnterTired() {
         if (isTired) return;
-
+        PlayTiredSoundSound();
         isTired = true;
         canMove = true;
         blockHeld = false;
-        currStamina = -10f;
+        currStamina = 0f;
         staminaBar.SetStamina(currStamina, maxStamina);
         animator.SetBool("Block", false);
         shadowAnimator.SetBool("Block", false);
@@ -726,6 +853,7 @@ public class PlayerController : NetworkBehaviour
     }
 
     protected virtual void ExitTired() {
+        wooshAudioSource.Stop();
         isTired = false;
         animator.SetBool("Tired", false);
         shadowAnimator.SetBool("Tired", false);
@@ -736,13 +864,16 @@ public class PlayerController : NetworkBehaviour
         DrainStamina(amount);
     }
 
-    void DrainStamina(float amount) {
+    void DrainStamina(float amount)
+    {
         currStamina -= amount;
 
-        if (currStamina < 0f)
+        if (currStamina <= 0f)
+        {
+            currStamina = 0f;
             EnterTired();
+        }
 
-        currStamina = Mathf.Clamp(currStamina, -50f, maxStamina);
         staminaBar.SetStamina(currStamina, maxStamina);
     }
 
@@ -768,6 +899,13 @@ public class PlayerController : NetworkBehaviour
 
     public virtual void DisableHitbox() {
         HitBox hitbox = GetComponentInChildren<HitBox>();
+
+        // Possible change
+        //if (characterType == CharacterType.Mahsk)
+            //speed = 5.5f;
+        //else
+            //speed = 7f;
+
         if (hitbox != null)
             hitbox.DisableHitbox();
     }
@@ -789,6 +927,7 @@ public class PlayerController : NetworkBehaviour
         blockHeld = false;
         movementLockedInAir = false;
 
+        wooshAudioSource.Stop();
         animator.speed = 1f;
         shadowAnimator.speed = 1f;
         rb.linearVelocity = Vector2.zero;

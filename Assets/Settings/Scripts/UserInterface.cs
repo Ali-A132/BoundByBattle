@@ -5,8 +5,12 @@ public class UserInterface : MonoBehaviour
 {
     public Image health;
     public Image stamina;
+    public Sprite normalStaminaSprite;
+    public Sprite tiredStaminaSprite;
     float healthTargetFill = 1f;
     float staminaTargetFill = 1f;
+    private bool isTiredVisual = false;
+    private bool enteredTired = false;
 
     void Update()
     {
@@ -35,6 +39,23 @@ public class UserInterface : MonoBehaviour
     public void SetStamina(float curr, float max)
     {
         staminaTargetFill = Mathf.Clamp01(curr / max);
+        if (curr <= 0f)
+        {
+            enteredTired = true;
+        }
+
+        if (enteredTired && curr >= 5f && !isTiredVisual)
+        {
+            stamina.sprite = tiredStaminaSprite;
+            isTiredVisual = true;
+        }
+
+        if (curr >= 50f)
+        {
+            stamina.sprite = normalStaminaSprite;
+            isTiredVisual = false;
+            enteredTired = false;
+        }
     }
 
 }
