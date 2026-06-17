@@ -1,5 +1,7 @@
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.InputSystem.Users;
+using UnityEngine.InputSystem;
 using UnityEngine.SceneManagement;
 
 public class MainMenuController : MonoBehaviour {
@@ -18,25 +20,38 @@ public class MainMenuController : MonoBehaviour {
     private int moveSoundIndex = 0;
     public AudioClip selectSounds;
     public AudioClip backSounds;
+    private bool menuBusy = false;
 
     void Start() {
-        StartCoroutine(ReverseTransitionDelay());
+        string sceneName = SceneManager.GetActiveScene().name;
+
+        if (sceneName == "FirstMainMenu")
+        {
+            StartCoroutine(AltReverseTransitionDelay());
+        }
+        else
+        {
+            StartCoroutine(ReverseTransitionDelay());
+        }
     }
 
     void Update() {
-        if (isMoving) return;
+        if (isMoving || menuBusy) return;
 
-        if (Input.GetKeyDown(KeyCode.S)) {
+        if (Input.GetKeyDown(KeyCode.S))
+        {
             MoveDown();
         }
-        else if (Input.GetKeyDown(KeyCode.W)) {
+        else if (Input.GetKeyDown(KeyCode.W))
+        {
             MoveUp();
         }
 
-        if (Input.GetKeyDown(KeyCode.Return)) {
+        if (Input.GetKeyDown(KeyCode.Return))
+        {
             SelectOption();
         }
-    }
+}
 
     void PlayMoveSound()
     {
@@ -61,58 +76,89 @@ public class MainMenuController : MonoBehaviour {
         currentIndex = 0;
     }
 
-    void MoveDown() {
-        if (isMoving) return;
+    void MoveDown()
+    {
+        if (isMoving || menuBusy) return;
+
+        animator.ResetTrigger("Up");
+        animator.ResetTrigger("Down");
         currentIndex = (currentIndex + 1) % (maxIndex + 1);
         animator.SetTrigger("Down");
         PlayMoveSound();
         StartCoroutine(MoveCooldown());
     }
 
-    void MoveUp() {
-        if (isMoving) return;
+    void MoveUp()
+    {
+        if (isMoving || menuBusy) return;
+
+        animator.ResetTrigger("Up");
+        animator.ResetTrigger("Down");
         currentIndex--;
         if (currentIndex < 0)
             currentIndex = maxIndex;
-
         animator.SetTrigger("Up");
         PlayMoveSound();
         StartCoroutine(MoveCooldown());
     }
 
     void SelectOption() {
-        switch (currentIndex) {
+        if (menuBusy) return;
+
+        menuBusy = true;
+        switch (currentIndex)
+        {
             case 0:
                 MatchData.stageIndex = 0;
                 StartCoroutine(LoadSceneWithTransition("CharacterSelect"));
                 break;
+
             case 1:
                 currentIndex = 0;
                 StartCoroutine(LoadSceneWithTransition("OnlineMoonColony"));
                 break;
+
             case 2:
                 PlayConfirmSound();
                 controlsPage.SetActive(true);
                 animator.SetTrigger("Enter");
+                StartCoroutine(UnlockMenuAfterDelay(1f));
                 break;
+
             case 3:
-                StartCoroutine(SlightDelay());
-                settingsPanel.SetActive(true);
-                mainMenuPanel.SetActive(false);
+                StartCoroutine(OpenSettingsRoutine());
                 break;
         }
     }
+    System.Collections.IEnumerator OpenSettingsRoutine()
+    {
+        PlayConfirmSound();
+        yield return new WaitForSeconds(0.01f);
+
+        settingsPanel.SetActive(true);
+        mainMenuPanel.SetActive(false);
+
+        menuBusy = false;
+    }
+
+    System.Collections.IEnumerator UnlockMenuAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        menuBusy = false;
+    }
+
 
     public void OnBackToMainMenu() {
         PlayBackSound();
         animator.SetTrigger("Back");
+        menuBusy = false;
     }
 
-    public void OnBack()
-    {
+    public void OnBack() {
         PlayBackSound();
         animator.SetTrigger("Back");
         controlsPage.SetActive(false);
+        menuBusy = false;
     }
     public void MusicOnOff()
     {
@@ -139,7 +185,7 @@ public class MainMenuController : MonoBehaviour {
 
         transitionFade.SetActive(true);
 
-        yield return new WaitForSeconds(1.2f);
+        yield return new WaitForSeconds(5.2f);
 
         SceneManager.LoadScene(sceneName);
     }
@@ -155,6 +201,13 @@ public class MainMenuController : MonoBehaviour {
     {
         reverseFade.SetActive(true);
         yield return new WaitForSeconds(1.2f);
+        reverseFade.SetActive(false);
+    }
+
+    System.Collections.IEnumerator AltReverseTransitionDelay()
+    {
+        reverseFade.SetActive(true);
+        yield return new WaitForSeconds(6.6f);
         reverseFade.SetActive(false);
     }
 }

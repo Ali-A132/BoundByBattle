@@ -77,7 +77,7 @@ public class OnlineHitBox : NetworkBehaviour
                 PlayerController.AttackType.Kick => 3f,
                 PlayerController.AttackType.Special => 12f,
                 PlayerController.AttackType.Launch => 1.5f,
-                PlayerController.AttackType.Chain => 7f,
+                PlayerController.AttackType.Chain => 9f,
                 _ => 0f
             },
             PlayerController.CharacterType.Payet => attackType switch {

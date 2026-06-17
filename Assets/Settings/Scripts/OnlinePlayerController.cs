@@ -4,13 +4,19 @@ using Unity.Netcode;
 using Unity.Netcode.Components;
 
 [RequireComponent(typeof(NetworkTransform))]
-public class OnlinePlayerController : PlayerController {
-    NetworkVariable<float> netHealth = new NetworkVariable<float>(100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
-    NetworkVariable<float> netStamina = new NetworkVariable<float>(100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
+public class OnlinePlayerController : PlayerController
+{
+    NetworkVariable<float> netHealth = new NetworkVariable<float>(
+        100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server
+    );
+    NetworkVariable<float> netStamina = new NetworkVariable<float>(
+        100f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server
+    );
+
     bool isInDamageState = false;
 
-    public override void OnNetworkSpawn() {
-        ApplyCharacterStats();
+    public override void OnNetworkSpawn()
+    {
         netHealth.OnValueChanged += OnHealthChanged;
         netStamina.OnValueChanged += OnStaminaChanged;
         healthBar.SetHealth(netHealth.Value, maxHealth);
@@ -18,7 +24,8 @@ public class OnlinePlayerController : PlayerController {
         LockControls();
     }
 
-    public override void OnNetworkDespawn() {
+    public override void OnNetworkDespawn()
+    {
         netHealth.OnValueChanged -= OnHealthChanged;
         netStamina.OnValueChanged -= OnStaminaChanged;
     }
@@ -26,123 +33,158 @@ public class OnlinePlayerController : PlayerController {
     void OnHealthChanged(float prev, float curr) { healthBar.SetHealth(curr, maxHealth); }
     void OnStaminaChanged(float prev, float curr) { staminaBar.SetStamina(curr, maxStamina); }
 
-    protected override void FixedUpdate() {
+    protected override void FixedUpdate()
+    {
         if (!IsOwner) return;
         base.FixedUpdate();
     }
 
-    protected override void Update() {
+    protected override void Update()
+    {
         if (!IsOwner) return;
         base.Update();
         SubmitStaminaServerRpc(currStamina);
     }
 
     [ServerRpc]
-    void SubmitStaminaServerRpc(float stamina) { 
-        netStamina.Value = stamina;
-    }
+    void SubmitStaminaServerRpc(float stamina) { netStamina.Value = stamina; }
 
-    protected override void EnterTired() {
+
+    protected override void EnterTired()
+    {
         base.EnterTired();
         if (IsOwner) SyncTiredServerRpc(true);
     }
 
-    protected override void ExitTired() {
+    protected override void ExitTired()
+    {
         base.ExitTired();
         if (IsOwner) SyncTiredServerRpc(false);
     }
 
     [ServerRpc]
-    void SyncTiredServerRpc(bool tired) { 
-        SyncTiredClientRpc(tired);
-    }
+    void SyncTiredServerRpc(bool tired) { SyncTiredClientRpc(tired); }
 
     [ClientRpc]
-    void SyncTiredClientRpc(bool tired) {
+    void SyncTiredClientRpc(bool tired)
+    {
         if (IsOwner) return;
         animator.SetBool("Tired", tired);
         if (shadowAnimator != null) shadowAnimator.SetBool("Tired", tired);
     }
 
-    public new void DrainStaminaEvent() {
+    public new void DrainStaminaEvent()
+    {
         if (!IsOwner) return;
         base.DrainStaminaEvent();
     }
 
-    public override void EnableHitbox() {
+    public override void EnableHitbox()
+    {
         if (!IsOwner) return;
         OnlineHitBox hitbox = GetComponentInChildren<OnlineHitBox>();
         if (hitbox != null) hitbox.EnableHitbox();
     }
 
-    public override void DisableHitbox() {
+    public override void DisableHitbox()
+    {
         if (!IsOwner) return;
         OnlineHitBox hitbox = GetComponentInChildren<OnlineHitBox>();
         if (hitbox != null) hitbox.DisableHitbox();
     }
 
-    public new void OnMove(InputAction.CallbackContext context) {
+    public new void OnMoveOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner) return;
-        base.OnMove(context);
+        base.OnMoveOnline(context);
     }
 
-    public new void OnJab(InputAction.CallbackContext context) {
+    public new void OnJabOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner || !context.started || isTired) return;
-        bool up = moveInput.y > 0.5f;
-        base.OnJab(context);
-        SyncAnimServerRpc(up ? "Taunt" : "Jab");
+        base.OnJabOnline(context);
+        SyncAnimServerRpc("Jab");
     }
 
-    public new void OnHeavyPunch(InputAction.CallbackContext context) {
+    public new void OnHeavyPunchOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner || !context.started || isTired) return;
         bool up = moveInput.y > 0.5f;
-        base.OnHeavyPunch(context);
+        base.OnHeavyPunchOnline(context);
         SyncAnimServerRpc(up ? "Launch" : "HeavyPunch");
     }
 
-    public new void OnKick(InputAction.CallbackContext context) {
+    public new void OnKickOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner || !context.started || isTired) return;
         bool up = moveInput.y > 0.5f;
-        base.OnKick(context);
+        base.OnKickOnline(context);
         SyncAnimServerRpc(up ? "Special" : "Kick");
     }
 
-    public new void OnLaunch(InputAction.CallbackContext context) {
+    public new void OnLaunchOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner || !context.started || isTired) return;
         if (moveInput.y <= 0.5f) return;
-        base.OnLaunch(context);
+        base.OnLaunchOnline(context);
         SyncAnimServerRpc("Launch");
     }
 
-    public new void OnSpecial(InputAction.CallbackContext context) {
+    public new void OnSpecialOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner || !context.started || isTired) return;
         if (moveInput.y <= 0.5f) return;
-        base.OnSpecial(context);
+        base.OnSpecialOnline(context);
         SyncAnimServerRpc("Special");
     }
 
-    public new void OnChain(InputAction.CallbackContext context) {
+    public new void OnChainOnline(InputAction.CallbackContext context)
+    {
         if (!IsOwner || !context.started || isTired) return;
-        base.OnChain(context);
+        base.OnChainOnline(context);
         SyncAnimServerRpc("Chain");
     }
 
-    public new void OnBlock(InputAction.CallbackContext context) {
-        if (!IsOwner) return;
-        base.OnBlock(context);
-        if (context.started) SyncBlockServerRpc(true);
-        if (context.canceled) SyncBlockServerRpc(false);
+    public new void OnBlockOnline(InputAction.CallbackContext context)
+    {
+        if (!IsOwner || isTired)
+            return;
+
+        bool up = moveInput.y > 0.5f;
+
+        if (up)
+        {
+            if (!context.started)
+                return;
+
+            base.OnBlockOnline(context);
+
+            SyncAnimServerRpc("Taunt");
+            return;
+        }
+
+        base.OnBlockOnline(context);
+
+        if (context.started)
+            SyncBlockServerRpc(true);
+
+        if (context.canceled)
+            SyncBlockServerRpc(false);
     }
 
-    public void ApplyDamage(AttackType attackType, Vector3 hitPos, float damage, ulong attackerClientId) {
+    public void ApplyDamage(AttackType attackType, Vector3 hitPos, float damage, ulong attackerClientId)
+    {
         if (!IsServer) return;
         if (roundManager.roundOver) return;
 
-        if (isInvincible) {
-            damage *= 0.2f;
+        if (isInvincible)
+        {
+            damage *= 0.4f;
             float newHealth = currHealth - damage;
             currHealth = Mathf.Max(newHealth, Mathf.Min(currHealth, 20f));
-        } else {
+        }
+        else
+        {
             currHealth -= damage;
         }
 
@@ -152,7 +194,8 @@ public class OnlinePlayerController : PlayerController {
     }
 
     [ClientRpc]
-    void ApplyDamageClientRpc(int attackTypeInt, Vector3 hitPos, float newHealth, ulong attackerClientId) {
+    void ApplyDamageClientRpc(int attackTypeInt, Vector3 hitPos, float newHealth, ulong attackerClientId)
+    {
         AttackType attack = (AttackType)attackTypeInt;
         if (roundManager.roundOver || knockedDown) return;
 
@@ -160,21 +203,14 @@ public class OnlinePlayerController : PlayerController {
         currHealth = newHealth;
         healthBar.SetHealth(currHealth, maxHealth);
 
-        if (!isInvincible) {
+        if (!isInvincible)
+        {
             blockHeld = false;
             animator.SetBool("Block", false);
-            if (shadowAnimator != null) 
-                shadowAnimator.SetBool("Block", false);
+            if (shadowAnimator != null) shadowAnimator.SetBool("Block", false);
         }
 
-
-        if (NetworkManager.Singleton.LocalClientId != attackerClientId) {
-            SpawnHitFX(hitPos, attack, isInvincible);
-        }
-
-        if (NetworkManager.Singleton.LocalClientId == attackerClientId) {
-            SpawnHitFX(hitPos, attack, isInvincible);
-        }
+        SpawnHitFX(hitPos, attack, isInvincible);
 
         if (currHealth <= 0) { KnockedOut(); return; }
         if (isInvincible) return;
@@ -183,11 +219,15 @@ public class OnlinePlayerController : PlayerController {
         inputSequence.Clear();
         canMove = false;
 
-        if (IsOwner) {
-            if (attack == AttackType.Launch) {
-                rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+        if (IsOwner)
+        {
+            if (attack == AttackType.Launch){
+                float launchDirX = facingRight ? -1f : 1f;
+                rb.linearVelocity = new Vector2(launchDirX * 4f, rb.linearVelocity.y);
                 movementLockedInAir = true;
-            } else {
+            }
+            else
+            {
                 rb.linearVelocity = Vector2.zero;
             }
         }
@@ -195,7 +235,8 @@ public class OnlinePlayerController : PlayerController {
         animator.SetFloat("xVelocity", 0f);
         if (shadowAnimator != null) shadowAnimator.SetFloat("xVelocity", 0f);
 
-        switch (attack) {
+        switch (attack)
+        {
             case AttackType.Launch:
                 PlayDamageAnim("Falling Down");
                 currStamina += 12;
@@ -213,22 +254,23 @@ public class OnlinePlayerController : PlayerController {
                 break;
         }
 
-        speed = characterType == CharacterType.Mahsk ? 5.5f : 7f;
+        speed = characterType == CharacterType.Mahsk ? 5.2f : 6.4f;
     }
 
-    void PlayDamageAnim(string stateName) {
+    void PlayDamageAnim(string stateName)
+    {
         animator.Play(stateName, 0, 0f);
-        if (shadowAnimator != null) 
-            shadowAnimator.Play(stateName, 0, 0f);
+        if (shadowAnimator != null) shadowAnimator.Play(stateName, 0, 0f);
     }
 
-
-    public new void EndAttack() {
+    public new void EndAttack()
+    {
         isInDamageState = false;
         base.EndAttack();
     }
 
-    protected override void KnockedOut() {
+    protected override void KnockedOut()
+    {
         canMove = false;
         animator.Play("Falling Down");
         if (shadowAnimator != null) shadowAnimator.gameObject.SetActive(false);
@@ -236,72 +278,71 @@ public class OnlinePlayerController : PlayerController {
     }
 
     [ServerRpc]
-    void SyncAnimServerRpc(string trigger) { 
-        SyncAnimClientRpc(trigger); 
-    }
+    void SyncAnimServerRpc(string trigger) { SyncAnimClientRpc(trigger); }
 
     [ClientRpc]
-    void SyncAnimClientRpc(string trigger) {
+    void SyncAnimClientRpc(string trigger)
+    {
         if (IsOwner) return;
+
+        animator.ResetTrigger(trigger);
         animator.SetTrigger(trigger);
-        if (shadowAnimator != null) shadowAnimator.SetTrigger(trigger);
+
+        if (shadowAnimator != null)
+        {
+            shadowAnimator.ResetTrigger(trigger);
+            shadowAnimator.SetTrigger(trigger);
+        }
     }
 
     [ServerRpc]
-    void SyncBlockServerRpc(bool blocking) { 
-        SyncBlockClientRpc(blocking); 
-    }
+    void SyncBlockServerRpc(bool blocking) { SyncBlockClientRpc(blocking); }
 
     [ClientRpc]
-    void SyncBlockClientRpc(bool blocking) {
+    void SyncBlockClientRpc(bool blocking)
+    {
         if (IsOwner) return;
         animator.SetBool("Block", blocking);
         if (shadowAnimator != null) shadowAnimator.SetBool("Block", blocking);
     }
 
     [ServerRpc]
-    void SyncVelocityAnimServerRpc(float xVel) { 
-        SyncVelocityAnimClientRpc(xVel); 
-    }
+    void SyncVelocityAnimServerRpc(float xVel) { SyncVelocityAnimClientRpc(xVel); }
 
     [ClientRpc]
     void SyncVelocityAnimClientRpc(float xVel)
     {
         if (IsOwner) return;
-        if (isInDamageState || !canMove) return;
+        if (isInDamageState) return;
         animator.SetFloat("xVelocity", xVel);
         if (shadowAnimator != null) shadowAnimator.SetFloat("xVelocity", xVel);
     }
 
-    public override void FreezeBlockAnimation() {
+    public override void FreezeBlockAnimation()
+    {
         base.FreezeBlockAnimation();
         if (IsOwner) SyncBlockFreezeServerRpc(true);
     }
 
-    protected override void ReleaseBlock() {
+    protected override void ReleaseBlock()
+    {
         base.ReleaseBlock();
         if (IsOwner) SyncBlockFreezeServerRpc(false);
     }
 
     [ServerRpc]
-    void SyncBlockFreezeServerRpc(bool freeze) {
-        SyncBlockFreezeClientRpc(freeze);
-    }
+    void SyncBlockFreezeServerRpc(bool freeze) { SyncBlockFreezeClientRpc(freeze); }
 
     [ClientRpc]
-    void SyncBlockFreezeClientRpc(bool freeze) {
+    void SyncBlockFreezeClientRpc(bool freeze)
+    {
         if (IsOwner) return;
-
-        if (freeze) {
-            animator.speed = 0f;
-            if (shadowAnimator != null) shadowAnimator.speed = 0f;
-        } else {
-            animator.speed = 1f;
-            if (shadowAnimator != null) shadowAnimator.speed = 1f;
-        }
+        animator.speed = freeze ? 0f : 1f;
+        if (shadowAnimator != null) shadowAnimator.speed = freeze ? 0f : 1f;
     }
 
-    protected override void FixedUpdate_PostBase() {
+    protected override void FixedUpdate_PostBase()
+    {
         if (!IsOwner) return;
         SyncVelocityAnimServerRpc(Mathf.Abs(rb.linearVelocityX));
     }

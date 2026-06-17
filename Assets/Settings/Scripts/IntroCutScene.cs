@@ -25,7 +25,7 @@ public class IntroCutsceneController : MonoBehaviour
         LockPlayer(payet);
         LockPlayer(mahsk);
 
-        yield return new WaitForSeconds(0.5f); 
+        yield return new WaitForSeconds(5f); 
 
         PlaySpeech(payet);
         yield return new WaitForSeconds(payetSpeechDuration);
@@ -48,7 +48,7 @@ public class IntroCutsceneController : MonoBehaviour
     {
         if (player == null) return;
 
-        // player.animator.Play("Speech", 0, 0f);
+        player.animator.Play("Speech", 0, 0f);
 
         if (player.shadowAnimator != null)
             player.shadowAnimator.Play("Speech", 0, 0f);
@@ -68,5 +68,7 @@ public class IntroCutsceneController : MonoBehaviour
 
         player.controlsLocked = false;
         player.canMove = true;
+        player.animator.Play("Movement", 0, 0f);
+        player.shadowAnimator.Play("Movement", 0, 0f);
     }
 }

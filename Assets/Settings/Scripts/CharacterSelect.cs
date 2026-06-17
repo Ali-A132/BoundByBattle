@@ -49,6 +49,7 @@ public class CharacterSelectController : MonoBehaviour {
     private int stageIndex = 0;
     private bool stageLocked = false;
     private bool inStageSelect = false;
+    private bool stageTransitioning = false;
 
     void Start() {
         if (MatchData.musicEnabled)
@@ -233,6 +234,8 @@ public class CharacterSelectController : MonoBehaviour {
 
 
     void HandleStageInput() {
+        if (stageTransitioning)
+            return;
 
         if (Input.GetKeyDown(KeyCode.Alpha6))
         {
@@ -250,28 +253,28 @@ public class CharacterSelectController : MonoBehaviour {
             if (stageIndex >= 2) {
                 PlayMoveSound();
                 stageIndex -= 2;
-                stageAnimator.SetTrigger("Up");
+                StartCoroutine(StageTransition("Up"));
             }
         }
         else if (Input.GetKeyDown(KeyCode.S)) {
             if (stageIndex <= 1) {
                 PlayMoveSound();
                 stageIndex += 2;
-                stageAnimator.SetTrigger("Down");
+                StartCoroutine(StageTransition("Down"));
             }
         }
         else if (Input.GetKeyDown(KeyCode.A)) {
             if (stageIndex % 2 == 1) {
                 PlayMoveSound();
                 stageIndex -= 1;
-                stageAnimator.SetTrigger("Left");
+                StartCoroutine(StageTransition("Left"));
             }
         }
         else if (Input.GetKeyDown(KeyCode.D)) {
             if (stageIndex % 2 == 0) {
                 PlayMoveSound();
                 stageIndex += 1;
-                stageAnimator.SetTrigger("Right");
+                StartCoroutine(StageTransition("Right"));
             }
         }
 
@@ -314,13 +317,36 @@ public class CharacterSelectController : MonoBehaviour {
 
     System.Collections.IEnumerator LoadSceneWithTransition(string sceneName)
     {
+        yield return null;
+
         PlayBackSound();
+
+        yield return null;
         forwardFade.SetActive(true);
 
-        yield return new WaitForSeconds(1.2f);
+        Animator fadeAnim = forwardFade.GetComponent<Animator>();
+        fadeAnim.Play("Click", 0, 0f);
+
+        yield return new WaitForSeconds(4f);
 
         SceneManager.LoadScene(sceneName);
     }
+    IEnumerator StageTransition(string triggerName)
+    {
+        stageTransitioning = true;
+
+        stageAnimator.ResetTrigger("Up");
+        stageAnimator.ResetTrigger("Down");
+        stageAnimator.ResetTrigger("Left");
+        stageAnimator.ResetTrigger("Right");
+
+        stageAnimator.SetTrigger(triggerName);
+
+        yield return new WaitForSeconds(0.25f);
+
+        stageTransitioning = false;
+    }
+
 
     void LockStage() {
         stageLocked = true;

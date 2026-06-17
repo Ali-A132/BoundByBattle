@@ -44,7 +44,7 @@ public class UserInterface : MonoBehaviour
             enteredTired = true;
         }
 
-        if (enteredTired && curr >= 5f && !isTiredVisual)
+        if (enteredTired && curr >= 2f && !isTiredVisual)
         {
             stamina.sprite = tiredStaminaSprite;
             isTiredVisual = true;

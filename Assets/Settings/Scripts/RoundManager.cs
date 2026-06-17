@@ -17,6 +17,7 @@ public class RoundManager : NetworkBehaviour
     public RoundUIController roundWorldUI;
     public GameObject blackScreen;
     public GameObject exit;
+    public AudioSource timeoutSpeaker;
     public AudioSource musicSpeaker;
     public AudioClip[] musicTracks;
     public AudioClip pauseMenu;
@@ -92,7 +93,6 @@ public class RoundManager : NetworkBehaviour
         player2.LockControls();
 
         roundTimer.ResetTimer();
-
         yield return StartCoroutine(Fade(1f, 0f));
         if (roundWorldUI != null)
             yield return StartCoroutine(roundWorldUI.PlayRoundIntro(currentRound));
@@ -145,7 +145,7 @@ public class RoundManager : NetworkBehaviour
     {
         if (roundOver) return;
         EndRound();
-        musicSpeaker.PlayOneShot(timeOutSound);
+        timeoutSpeaker.PlayOneShot(timeOutSound);
         PlayerController winner = null;
         if (player1.currHealth > player2.currHealth) winner = player1;
         else if (player2.currHealth > player1.currHealth) winner = player2;
@@ -153,7 +153,7 @@ public class RoundManager : NetworkBehaviour
         if (winner != null)
         {
             tieGame = false;
-            winner.PlayVictoryTauntDelayed(1.5f);
+            winner.PlayVictoryTauntDelayed(2.5f);
             if (winner == player1) { p1Wins++; UpdateRoundUI(p1_Rounds, p1Wins); }
             else { p2Wins++; UpdateRoundUI(p2_Rounds, p2Wins); }
         }

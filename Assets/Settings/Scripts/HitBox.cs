@@ -59,7 +59,7 @@ public class HitBox : MonoBehaviour
                 PlayerController.AttackType.Kick => 3f,
                 PlayerController.AttackType.Special => 12f,
                 PlayerController.AttackType.Launch => 1.5f,
-                PlayerController.AttackType.Chain => 7f,
+                PlayerController.AttackType.Chain => 9f,
                 _ => 0f
             },
             PlayerController.CharacterType.Payet => attackType switch
@@ -67,9 +67,9 @@ public class HitBox : MonoBehaviour
                 PlayerController.AttackType.Jab => 3.5f,
                 PlayerController.AttackType.Heavy => 5.5f,
                 PlayerController.AttackType.Kick => 4.5f,
-                PlayerController.AttackType.Special => 15f,
+                PlayerController.AttackType.Special => 14f,
                 PlayerController.AttackType.Launch => 2.5f,
-                PlayerController.AttackType.Chain => 10f,
+                PlayerController.AttackType.Chain => 9f,
                 _ => 0f
             },
             _ => 0f

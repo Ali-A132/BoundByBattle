@@ -8,7 +8,9 @@ public class GameTheme : MonoBehaviour
 
     void Start()
     {
-        musicSpeaker.PlayOneShot(musicTrack);
+        musicSpeaker.clip = musicTrack;
+        musicSpeaker.loop = true;
+        musicSpeaker.Play();
     }
 
     private void Update()

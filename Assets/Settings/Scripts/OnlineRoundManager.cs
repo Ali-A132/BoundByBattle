@@ -11,16 +11,14 @@ public class OnlineRoundManager : RoundManager
     public OnlineMatchSetup matchSetup;
     public GameObject digits;
     public AudioClip musicTrack;
-    public GameObject reverseFade;
-
     protected override void Start() {
-        StartCoroutine(ReverseTransitionDelay());
         musicSpeaker.PlayOneShot(musicTrack);
     }
 
     public void BeginOnlineMatch()
     {
         if (!IsServer) return;
+        musicSpeaker.Stop();
         StartCoroutine(OnlineDelayedStart());
     }
 
@@ -332,10 +330,4 @@ public class OnlineRoundManager : RoundManager
         player2?.ResetForNewRound();
     }
 
-    System.Collections.IEnumerator ReverseTransitionDelay()
-    {
-        reverseFade.SetActive(true);
-        yield return new WaitForSeconds(1.2f);
-        reverseFade.SetActive(false);
-    }
 }

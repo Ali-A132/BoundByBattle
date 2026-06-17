@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.Collections;
 using Unity.Netcode;
 using UnityEngine.SceneManagement;
+using UnityEngine.InputSystem.Users;
+using UnityEngine.Windows;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class PlayerController : NetworkBehaviour
@@ -32,6 +34,12 @@ public class PlayerController : NetworkBehaviour
     public float currStamina = 0;
     public float idleStaminaRegen = 10f;
     public float tiredRecoveryThreshold = 50f;
+
+    public float repeatAttackWindow = 0.35f;
+    public float repeatAttackPenalty = 7f;
+    private AttackType? lastAttackUsed = null;
+    private float lastAttackTime = -999f;
+    private bool applyRepeatPenalty = false;
 
     // Damage Mapping, WIP
     public float damageJab;
@@ -103,32 +111,32 @@ public class PlayerController : NetworkBehaviour
                 damageKick = 3f;
                 damageSpecial = 12f;
                 damageLaunch = 1.5f;
-                damageChain = 7f;
+                damageChain = 9f;
 
                 staminaJab = 10f;
                 staminaKick = 20f;
-                staminaHeavy = 22f;
+                staminaHeavy = 26f;
                 staminaLaunch = 15f;
                 staminaSpecial = 55f;
                 staminaChain = 12f;
                 break;
 
             case CharacterType.Payet:
-                speed = 7f;
+                speed = 6.5f;
 
                 damageJab = 3.5f;
                 damageHeavy = 5.5f;
                 damageKick = 4.5f;
                 damageSpecial = 14f;
                 damageLaunch = 2.5f;
-                damageChain = 10f;
+                damageChain = 9f;
 
                 staminaJab = 10f;
                 staminaKick = 20f;
-                staminaHeavy = 20f;
-                staminaLaunch = 10f;
+                staminaHeavy = 22f;
+                staminaLaunch = 15f;
                 staminaSpecial = 60f;
-                staminaChain = 10f;
+                staminaChain = 15f;
                 break;
         }
     }
@@ -141,25 +149,45 @@ public class PlayerController : NetworkBehaviour
         staminaBar.SetStamina(currStamina, maxStamina);
         currHealth = maxHealth;
         cam = Camera.main;
-        camHalfWidth = cam.orthographicSize * cam.aspect;
         rb = GetComponent<Rigidbody2D>();
         animator = GetComponent<Animator>();
         halfWidth = GetComponent<Collider2D>().bounds.extents.x;
         bodyCollider = GetComponent<Collider2D>();
         StartCoroutine(WarmUpAssets());
-        staminaBar.SetStamina(maxStamina, maxStamina);
     }
 
     IEnumerator WarmUpAssets()
     {
         yield return null;
+        EnableHitbox();
+        animator.Play("Jab");
+        shadowAnimator.Play("Jab");
+        animator.Play("Movement", 0, 0f);
+        shadowAnimator.Play("Movement", 0, 0f);
         Vector3 offScreen = new Vector3(-9999f, -9999f, -9999f);
+
+        GameObject warmupObj = new GameObject("AudioWarmup");
+        AudioSource warmupSource = warmupObj.AddComponent<AudioSource>();
+        warmupSource.volume = 0f;
+
+        foreach (var clip in wooshSounds)
+            if (clip != null) warmupSource.PlayOneShot(clip);
+
+        foreach (var clip in hitSounds)
+            if (clip != null) warmupSource.PlayOneShot(clip);
+
+        foreach (var clip in blockSounds)
+            if (clip != null) warmupSource.PlayOneShot(clip);
+
+        if (groundHitSound != null) warmupSource.PlayOneShot(groundHitSound);
+        if (tiredSound != null) warmupSource.PlayOneShot(tiredSound);
+        if (slidingStrike != null) warmupSource.PlayOneShot(slidingStrike);
+
+        yield return new WaitForSeconds(0.2f);
+        Destroy(warmupObj);
 
         foreach (var sr in GetComponentsInChildren<SpriteRenderer>(true))
             sr.enabled = false;
-
-        animator.SetTrigger("Special");
-        shadowAnimator.SetTrigger("Special");
 
         if (hitEffects != null)
         {
@@ -185,6 +213,8 @@ public class PlayerController : NetworkBehaviour
 
         foreach (var sr in GetComponentsInChildren<SpriteRenderer>(true))
             sr.enabled = true;
+        DisableHitbox();
+        staminaBar.SetStamina(maxStamina, maxStamina);
     }
 
     protected virtual void FixedUpdate() {
@@ -237,8 +267,9 @@ public class PlayerController : NetworkBehaviour
         }
 
         if (Mathf.Abs(rb.linearVelocityX) > 0.01f) {
-            float minX = cam.transform.position.x - camHalfWidth + halfWidth;
-            float maxX = cam.transform.position.x + camHalfWidth - halfWidth;
+            float halfWidth_cam = cam.orthographicSize * cam.aspect;
+            float minX = cam.transform.position.x - halfWidth_cam + halfWidth;
+            float maxX = cam.transform.position.x + halfWidth_cam - halfWidth;
             Vector3 pos = transform.position;
             pos.x = Mathf.Clamp(pos.x, minX, maxX);
             transform.position = pos;
@@ -249,9 +280,6 @@ public class PlayerController : NetworkBehaviour
             if (comboTimer <= 0f)
                 inputSequence.Clear();
         }
-
-        bool isIdle = canMove && Mathf.Abs(rb.linearVelocityX) < 0.01f && inputSequence.Count == 0 && !blockHeld && !movementLockedInAir;
-        bool isWalking = canMove && Mathf.Abs(rb.linearVelocityX) > 0.01f && !blockHeld && !movementLockedInAir;
 
         float regenRate = idleStaminaRegen;
 
@@ -270,7 +298,6 @@ public class PlayerController : NetworkBehaviour
             }
             staminaBar.SetStamina(currStamina, maxStamina);
         }
-
 
     }
 
@@ -316,57 +343,139 @@ public class PlayerController : NetworkBehaviour
             shadowAnimator.SetTrigger(trigger);
     }
 
-    public void OnMove(InputAction.CallbackContext context) {
+    public void OnMove(Vector2 input)
+    {
         if (controlsLocked) return;
-        moveInput = context.ReadValue<Vector2>();
+
+        moveInput = input;
+
+        upHeld = input.y > 0.5f;
     }
 
-    public void OnJab(InputAction.CallbackContext context) {
-        if (!context.started) return;
+    public void OnJab() {
         QueueInput(AttackType.Jab);
     }
 
-    public void OnHeavyPunch(InputAction.CallbackContext context) {
-        if (!context.started) return;
+    public void OnHeavyPunch() {
         QueueInput(AttackType.Heavy);
     }
 
-    public void OnKick(InputAction.CallbackContext context) {
-        if (!context.started) return;
+    public void OnKick() {
         QueueInput(AttackType.Kick);
     }
 
-    public void OnLaunch(InputAction.CallbackContext context) {
-        if (!context.started) return;
+    public void OnLaunch() {
         if (upHeld == true) {
             QueueInput(AttackType.Launch);
         }
     }
 
-    public void OnSpecial(InputAction.CallbackContext context) {
-        if (!context.started) return;
+    public void OnSpecial() {
         if (upHeld == true) {
             QueueInput(AttackType.Special);
         }
     }
 
-    public void OnChain(InputAction.CallbackContext context) {
+    public void OnChain() {
+        QueueInput(AttackType.Chain);
+
+    }
+
+    public void OnBlock()
+    {
+        if (controlsLocked || isTired)
+            return;
+
+        if (currStamina <= 0f)
+            return;
+
+        if (upHeld)
+        {
+            canMove = false;
+            StartTaunt();
+            return;
+        }
+
+        blockHeld = true;
+        canMove = false;
+
+        inputSequence.Clear();
+        CurrentAttack = AttackType.Block;
+
+        shadowAnimator.SetFloat("xVelocity", 0f);
+
+        animator.SetBool("Block", true);
+        shadowAnimator.SetBool("Block", true);
+    }
+
+    public void OnBlockReleased()
+    {
+        blockHeld = false;
+        ReleaseBlock();
+    }
+
+    public void OnMoveOnline(InputAction.CallbackContext context)
+    {
+        if (controlsLocked) return;
+        moveInput = context.ReadValue<Vector2>();
+    }
+
+    public void OnJabOnline(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        Debug.Log(gameObject.name + " Jab Pressed");
+        QueueInput(AttackType.Jab);
+    }
+
+    public void OnHeavyPunchOnline(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        QueueInput(AttackType.Heavy);
+    }
+
+    public void OnKickOnline(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        QueueInput(AttackType.Kick);
+    }
+
+    public void OnLaunchOnline(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        if (upHeld == true)
+        {
+            QueueInput(AttackType.Launch);
+        }
+    }
+
+    public void OnSpecialOnline(InputAction.CallbackContext context)
+    {
+        if (!context.started) return;
+        if (upHeld == true)
+        {
+            QueueInput(AttackType.Special);
+        }
+    }
+
+    public void OnChainOnline(InputAction.CallbackContext context)
+    {
         if (!context.started) return;
         QueueInput(AttackType.Chain);
 
     }
 
-    public void OnBlock(InputAction.CallbackContext context)
+    public void OnBlockOnline(InputAction.CallbackContext context)
     {
         if (controlsLocked || isTired)
             return;
 
         if (context.started && currStamina > 0f)
         {
-            if (upHeld) {
+            if (upHeld)
+            {
                 canMove = false;
                 StartTaunt();
-                return; 
+                return;
             }
 
             blockHeld = true;
@@ -411,6 +520,18 @@ public class PlayerController : NetworkBehaviour
 
         AttackType lastAttack = inputSequence[inputSequence.Count - 1];
         inputSequence.Clear();
+
+        applyRepeatPenalty = false;
+
+        if (lastAttackUsed.HasValue &&
+            lastAttackUsed.Value == lastAttack &&
+            Time.time - lastAttackTime <= repeatAttackWindow)
+        {
+            applyRepeatPenalty = true;
+        }
+
+        lastAttackUsed = lastAttack;
+        lastAttackTime = Time.time;
 
         if (upHeld == true && lastAttack == AttackType.Heavy) {
             if (characterType == CharacterType.Mahsk) {
@@ -486,7 +607,7 @@ public class PlayerController : NetworkBehaviour
         if (characterType == CharacterType.Mahsk)
             speed = 5.2f;
         else
-            speed = 7f;
+            speed = 6.5f;
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
@@ -517,6 +638,7 @@ public class PlayerController : NetworkBehaviour
         canMove = true;
         rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
         rb.AddForce(Vector2.up * 10f, ForceMode2D.Impulse);
+
     }
 
     public void BackUpJump() {
@@ -539,7 +661,7 @@ public class PlayerController : NetworkBehaviour
         if (characterType == CharacterType.Mahsk)
             speed = 5.2f;
         else
-            speed = 7f;
+            speed = 6.5f;
         rb.AddForce(Vector2.down * 10f, ForceMode2D.Impulse);
 
         if (inputSequence.Count > 0)
@@ -552,7 +674,7 @@ public class PlayerController : NetworkBehaviour
         if (characterType == CharacterType.Mahsk)
             speed = 5.2f;
         else
-            speed = 7f;
+            speed = 6.5f;
         rb.AddForce(Vector2.down * 4f, ForceMode2D.Impulse);
 
         if (inputSequence.Count > 0)
@@ -575,10 +697,6 @@ public class PlayerController : NetworkBehaviour
         }
 
         //float damage = attackType switch { AttackType.Jab => damageJab, AttackType.Heavy => damageHeavy, AttackType.Kick => damageKick, AttackType.Special => damageSpecial, AttackType.Launch => damageLaunch, _ => 0f};
-
-        if (attackType == AttackType.Chain) {
-            damage = damageChain;
-        }
 
         if (isInvincible) {
             damage *= 0.4f;
@@ -608,10 +726,13 @@ public class PlayerController : NetworkBehaviour
         inputSequence.Clear();
         canMove = false;
 
-        if (attackType == AttackType.Launch) {
-            rb.linearVelocity = new Vector2(0f, rb.linearVelocity.y);
+        if (attackType == AttackType.Launch)
+        {
+            float launchDirX = attacker != null ? Mathf.Sign(transform.position.x - attacker.transform.position.x) : (facingRight ? -1f : 1f);
+            rb.linearVelocity = new Vector2(launchDirX * 4f, rb.linearVelocity.y);
             movementLockedInAir = true;
-        } else {
+        }
+        else {
             rb.linearVelocity = Vector2.zero;
         }
 
@@ -653,47 +774,58 @@ public class PlayerController : NetworkBehaviour
         if (characterType == CharacterType.Mahsk)
             speed = 5.2f;
         else
-            speed = 7f;
+            speed = 6.5f;
     }
 
-    public void SpawnHitFX(Vector3 pos, AttackType attack, bool wasBlocked) {
-        Vector3 spawnPos = new Vector3(pos.x, pos.y, -1f);
+    public void SpawnHitFX(Vector3 pos, AttackType attack, bool wasBlocked)
+    {
+
         Vector2 offset = new Vector2(0f, 0f);
-        if (attack == AttackType.Kick) {
+        if (attack == AttackType.Kick)
+        {
             offset = new Vector2(0f, -1.5f);
-        } else if (attack == AttackType.Heavy) {
+        }
+        else if (attack == AttackType.Heavy)
+        {
             offset = new Vector2(0f, -0.75f);
-        } else if (attack == AttackType.Jab) {
+        }
+        else if (attack == AttackType.Jab)
+        {
             offset = new Vector2(0f, -0.75f);
-        } else if (characterType == CharacterType.Payet && attack == AttackType.Kick) {
+        }
+        else if (characterType == CharacterType.Payet && attack == AttackType.Kick)
+        {
             offset = new Vector2(0f, -2.5f);
-        } else if (characterType == CharacterType.Payet && attack == AttackType.Special) {
+        }
+        else if (characterType == CharacterType.Payet && attack == AttackType.Special)
+        {
             offset = new Vector2(0f, -0.5f);
-        } else if (characterType == CharacterType.Mahsk && attack == AttackType.Kick && secondKick) {
+        }
+        else if (characterType == CharacterType.Mahsk && attack == AttackType.Kick && secondKick)
+        {
             offset = new Vector2(0f, 7f);
-        } else if (characterType == CharacterType.Mahsk && attack == AttackType.Kick) {
+        }
+        else if (characterType == CharacterType.Mahsk && attack == AttackType.Kick)
+        {
             offset = new Vector2(0f, 5.5f);
         }
 
-        spawnPos = new Vector3(
-        pos.x + offset.x,
-        pos.y + offset.y,
-        -1f
-    );
+        Vector3 spawnPos = new Vector3(pos.x + offset.x, pos.y + offset.y, -1f);
         GameObject fx = Instantiate(hitEffects, spawnPos, Quaternion.identity);
         Animator anim = fx.GetComponent<Animator>();
-        int hitType = GetHitTypeFromAttack(attack);
 
-        if (wasBlocked) {
+        if (wasBlocked)
+        {
             PlayBlockSound();
-            hitType = 6;
+            anim.SetInteger("HitType", 6);
         }
-        else {
+        else
+        {
             PlayHitSound();
-            hitType = GetHitTypeFromAttack(attack);
+            anim.SetInteger("HitType", GetHitTypeFromAttack(attack));
         }
-        anim.SetInteger("HitType", hitType);
     }
+
 
     public void SpawnDustFX()
     {
@@ -835,7 +967,8 @@ public class PlayerController : NetworkBehaviour
         canMove = false;
         knockedDown = true;
         rb.linearVelocity = Vector2.zero;
-        rb.simulated = false;
+        rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+
     }
 
     protected virtual void EnterTired() {
@@ -859,14 +992,16 @@ public class PlayerController : NetworkBehaviour
         shadowAnimator.SetBool("Tired", false);
     }
 
+
     public void DrainStaminaEvent() {
         float amount = GetStaminaCostForAttack(CurrentAttack);
         DrainStamina(amount);
     }
 
-    void DrainStamina(float amount)
-    {
+    void DrainStamina(float amount) {
         currStamina -= amount;
+
+        applyRepeatPenalty = false;
 
         if (currStamina <= 0f)
         {
@@ -878,7 +1013,8 @@ public class PlayerController : NetworkBehaviour
     }
 
     float GetStaminaCostForAttack(AttackType attack) {
-        return attack switch {
+        float cost = attack switch
+        {
             AttackType.Jab => staminaJab,
             AttackType.Kick => staminaKick,
             AttackType.Heavy => staminaHeavy,
@@ -888,6 +1024,12 @@ public class PlayerController : NetworkBehaviour
             AttackType.Block => staminaBlockDrainPerSecond,
             _ => 0f
         };
+
+        if (applyRepeatPenalty)
+            cost += repeatAttackPenalty;
+
+        Debug.Log(cost);
+        return cost;
     }
 
 
@@ -915,13 +1057,16 @@ public class PlayerController : NetworkBehaviour
         StartCoroutine(VictoryTauntRoutine(delay));
     }
 
-    IEnumerator VictoryTauntRoutine(float delay) {
+    IEnumerator VictoryTauntRoutine(float delay)
+    {
         yield return new WaitForSeconds(delay);
 
         if (currHealth <= 0f) yield break;
 
         StopAllCoroutines();
         inputSequence.Clear();
+
+        moveInput = Vector2.zero;
 
         canMove = false;
         blockHeld = false;
@@ -931,9 +1076,14 @@ public class PlayerController : NetworkBehaviour
         animator.speed = 1f;
         shadowAnimator.speed = 1f;
         rb.linearVelocity = Vector2.zero;
+
         animator.Play("Taunt", 0, 0f);
         shadowAnimator.Play("Taunt", 0, 0f);
+
         yield return new WaitForSeconds(2.19f);
+
+        rb.linearVelocity = Vector2.zero;
+
         animator.Play("Idle", 0, 0f);
         shadowAnimator.Play("Idle", 0, 0f);
     }
@@ -966,7 +1116,7 @@ public class PlayerController : NetworkBehaviour
         blockHeld = false;
         movementLockedInAir = false;
 
-        rb.simulated = true;
+        rb.constraints = RigidbodyConstraints2D.FreezeRotation;
         rb.linearVelocity = Vector2.zero;
 
         animator.speed = 1f;
@@ -983,6 +1133,8 @@ public class PlayerController : NetworkBehaviour
     public void LockControls() {
         controlsLocked = true;
         canMove = false;
+        rb.linearVelocity = Vector2.zero;
+        moveInput = Vector2.zero;
         rb.linearVelocity = Vector2.zero;
     }
     public void UnlockControls() {
