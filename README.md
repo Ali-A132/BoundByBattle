@@ -39,6 +39,8 @@ Unlike many traditional fighting games, players cannot jump over opponents or sw
 
 ---
 
+![Demo Video](boundbybattle.gif)
+
 # Development Process
 
 C# was a natural choice for a fighting game due to its strong object-oriented capabilities. The project heavily utilizes inheritance and polymorphism, enabling reusable character systems while still supporting unique fighter abilities, animations, and stats.
@@ -163,7 +165,7 @@ Check out the original soundtrack and music assignments below.
 
 ### Special Thanks
 
-* HelioKing — Early playtesting and feedback
+* HelioKing - Early playtesting and feedback
 
 ---
 
