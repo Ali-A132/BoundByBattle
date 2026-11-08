@@ -95,56 +95,42 @@ public class PlayerController : NetworkBehaviour
         Chain
     }
 
-    public enum CharacterType {
-        Mahsk,
-        Payet
+    protected virtual void ApplyCharacterStats()
+    {
+        // //
     }
 
-    public CharacterType characterType;
-    public virtual void ApplyCharacterStats() {
-        switch (characterType) {
-            case CharacterType.Mahsk:
-                speed = 5.2f;
+    protected float baseMovementSpeed;
 
-                damageJab = 4.5f;
-                damageHeavy = 7.5f;
-                damageKick = 3f;
-                damageSpecial = 12f;
-                damageLaunch = 1.5f;
-                damageChain = 9f;
+    protected virtual void RestoreMovementSpeed()
+    {
+        speed = baseMovementSpeed;
+    }
 
-                staminaJab = 10f;
-                staminaKick = 20f;
-                staminaHeavy = 26f;
-                staminaLaunch = 15f;
-                staminaSpecial = 55f;
-                staminaChain = 12f;
-                break;
+    protected virtual void PlayLaunchSound()
+    {
+        PlayWooshSound();
+    }
 
-            case CharacterType.Payet:
-                speed = 6.5f;
-
-                damageJab = 3.5f;
-                damageHeavy = 5.5f;
-                damageKick = 4.5f;
-                damageSpecial = 14f;
-                damageLaunch = 2.5f;
-                damageChain = 9f;
-
-                staminaJab = 10f;
-                staminaKick = 20f;
-                staminaHeavy = 22f;
-                staminaLaunch = 15f;
-                staminaSpecial = 60f;
-                staminaChain = 15f;
-                break;
+    protected virtual Vector2 GetHitEffectOffset(AttackType attack)
+    {
+        switch (attack)
+        {
+            case AttackType.Kick:
+                return new Vector2(0f, -1.5f);
+            case AttackType.Heavy:
+            case AttackType.Jab:
+                return new Vector2(0f, -0.75f);
+            default:
+                return Vector2.zero;
         }
     }
 
     public AttackType CurrentAttack { get; private set; }
 
-    private void Awake() {
+    protected virtual void Awake() {
         ApplyCharacterStats();
+        baseMovementSpeed = speed;
         currStamina = maxStamina;
         staminaBar.SetStamina(currStamina, maxStamina);
         currHealth = maxHealth;
@@ -301,7 +287,7 @@ public class PlayerController : NetworkBehaviour
 
     }
 
-    void PlayWooshSound() {
+    protected void PlayWooshSound() {
         if (wooshSounds.Length == 0 || wooshAudioSource == null) return;
         wooshAudioSource.PlayOneShot(wooshSounds[wooshSoundIndex]);
         wooshSoundIndex = (wooshSoundIndex + 1) % wooshSounds.Length;
@@ -330,7 +316,7 @@ public class PlayerController : NetworkBehaviour
         wooshAudioSource.PlayOneShot(tiredSound);
     }
 
-    void PlaySlidingStrikeSound()
+    protected void PlaySlidingStrikeSound()
     {
         wooshAudioSource.PlayOneShot(slidingStrike);
     }
@@ -534,12 +520,7 @@ public class PlayerController : NetworkBehaviour
         lastAttackTime = Time.time;
 
         if (upHeld == true && lastAttack == AttackType.Heavy) {
-            if (characterType == CharacterType.Mahsk) {
-                PlaySlidingStrikeSound();
-            }
-            else {
-                PlayWooshSound();
-            }
+            PlayLaunchSound();
             StartLaunch();
             return;
         }
@@ -583,37 +564,34 @@ public class PlayerController : NetworkBehaviour
         }
     }
 
-    private void StartLaunch() {
+    protected virtual void StartLaunch() {
         CurrentAttack = AttackType.Launch;
         canMove = false;
         PlayAnim("Launch");
     }
-    private void StartSpecial() {
+    protected virtual void StartSpecial() {
         CurrentAttack = AttackType.Special;
         canMove = false;
         speed = 12f;
         PlayAnim("Special");
     }
-    private void StartTaunt() {
+    protected virtual void StartTaunt() {
         speed = 0;
         canMove = false;
         PlayAnim("Taunt");
     }
 
-    public void EndAttack() {
+    public virtual void EndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
 
-        if (characterType == CharacterType.Mahsk)
-            speed = 5.2f;
-        else
-            speed = 6.5f;
+        RestoreMovementSpeed();
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
     }
 
-    public void SpeedBoost() {
+    public virtual void SpeedBoost() {
         speed = 10f;
         canMove = true;
         rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
@@ -623,7 +601,7 @@ public class PlayerController : NetworkBehaviour
             TryStartNextAttack();
     }
 
-    public void FlyingSpeedBoost()
+    public virtual void FlyingSpeedBoost()
     {
         speed = 10f;
         canMove = true;
@@ -634,20 +612,20 @@ public class PlayerController : NetworkBehaviour
             TryStartNextAttack();
     }
 
-    public void LaunchJump() {
+    public virtual void LaunchJump() {
         canMove = true;
         rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
         rb.AddForce(Vector2.up * 10f, ForceMode2D.Impulse);
 
     }
 
-    public void BackUpJump() {
+    public virtual void BackUpJump() {
         canMove = true;
         rb.linearVelocity = new Vector2(rb.linearVelocityX, 0f);
         rb.AddForce(Vector2.up * 6f, ForceMode2D.Impulse);
     }
 
-    public void LaunchSpeedBoost() {
+    public virtual void LaunchSpeedBoost() {
         speed = 13.5f;
         canMove = true;
 
@@ -655,26 +633,20 @@ public class PlayerController : NetworkBehaviour
             TryStartNextAttack();
     }
 
-    public void TrueEndAttack() {
+    public virtual void TrueEndAttack() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
-        if (characterType == CharacterType.Mahsk)
-            speed = 5.2f;
-        else
-            speed = 6.5f;
+        RestoreMovementSpeed();
         rb.AddForce(Vector2.down * 10f, ForceMode2D.Impulse);
 
         if (inputSequence.Count > 0)
             TryStartNextAttack();
     }
 
-    public void FallingDownPush() {
+    public virtual void FallingDownPush() {
         rb.linearVelocity = Vector2.zero;
         canMove = true;
-        if (characterType == CharacterType.Mahsk)
-            speed = 5.2f;
-        else
-            speed = 6.5f;
+        RestoreMovementSpeed();
         rb.AddForce(Vector2.down * 4f, ForceMode2D.Impulse);
 
         if (inputSequence.Count > 0)
@@ -771,44 +743,13 @@ public class PlayerController : NetworkBehaviour
                     currStamina += 1;
                 break;
         }
-        if (characterType == CharacterType.Mahsk)
-            speed = 5.2f;
-        else
-            speed = 6.5f;
+        RestoreMovementSpeed();
     }
 
     public void SpawnHitFX(Vector3 pos, AttackType attack, bool wasBlocked)
     {
 
-        Vector2 offset = new Vector2(0f, 0f);
-        if (attack == AttackType.Kick)
-        {
-            offset = new Vector2(0f, -1.5f);
-        }
-        else if (attack == AttackType.Heavy)
-        {
-            offset = new Vector2(0f, -0.75f);
-        }
-        else if (attack == AttackType.Jab)
-        {
-            offset = new Vector2(0f, -0.75f);
-        }
-        else if (characterType == CharacterType.Payet && attack == AttackType.Kick)
-        {
-            offset = new Vector2(0f, -2.5f);
-        }
-        else if (characterType == CharacterType.Payet && attack == AttackType.Special)
-        {
-            offset = new Vector2(0f, -0.5f);
-        }
-        else if (characterType == CharacterType.Mahsk && attack == AttackType.Kick && secondKick)
-        {
-            offset = new Vector2(0f, 7f);
-        }
-        else if (characterType == CharacterType.Mahsk && attack == AttackType.Kick)
-        {
-            offset = new Vector2(0f, 5.5f);
-        }
+        Vector2 offset = GetHitEffectOffset(attack);
 
         Vector3 spawnPos = new Vector3(pos.x + offset.x, pos.y + offset.y, -1f);
         GameObject fx = Instantiate(hitEffects, spawnPos, Quaternion.identity);
